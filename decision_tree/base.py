@@ -1,13 +1,15 @@
 """Base class for decision trees with a scikit-learn like API."""
 from abc import ABC, abstractmethod
 
+import numpy as np
+
 
 class BaseDecisionTree(ABC):
-    """Skeleton shared by every tree variant (classification, regression, ...).
+    """Base class shared by every tree variant (classification, regression, ...).
 
     Hyperparameters are set in ``__init__``; ``fit``, ``predict`` and ``eval``
     follow the scikit-learn conventions. Subclasses implement the abstract
-    hooks; the TODOs are left to the students.
+    methods for building and evaluating each type of tree.
 
     Parameters:
         max_depth (int or None): Maximum depth of the tree. The root has depth
@@ -63,15 +65,15 @@ class BaseDecisionTree(ABC):
     def fit(self, X, y):
         """Build the tree from training data.
 
-        TODO (students): implement this method. It should
-          1. validate the hyperparameters (e.g. ``max_depth`` is None or a
-             positive int, ``min_samples_split >= 2``, ``criterion`` is
-             supported) and raise ``ValueError`` otherwise;
-          2. convert ``X`` and ``y`` to arrays and check that they have the
+        This method:
+          1. validates the hyperparameters (e.g. ``max_depth`` is None or a
+             non-negative int, ``min_samples_split >= 2``, ``criterion`` is
+             supported) and raises ``ValueError`` otherwise;
+          2. converts ``X`` and ``y`` to arrays and checks that they have the
              same number of samples;
-          3. call ``self._build_tree(X, y, depth=0)`` and store the returned
+          3. calls ``self._build_tree(X, y, depth=0)`` and stores the returned
              node in ``self.root``;
-          4. return ``self``.
+          4. returns ``self``.
 
         Args:
             X (array-like, shape (n_samples, n_features)): Training features.
@@ -81,14 +83,28 @@ class BaseDecisionTree(ABC):
         Returns:
             BaseDecisionTree: ``self`` (the fitted estimator).
         """
-        raise NotImplementedError("TODO: implement fit")
+        if self.max_depth is not None and (not isinstance(self.max_depth, int) or self.max_depth < 0):
+            raise ValueError("max_depth must be None or a non-negative integer")
+        if not isinstance(self.min_samples_split, int) or self.min_samples_split < 2:
+            raise ValueError("min_samples_split must be an integer >= 2")
+        if self.criterion not in self._supported_criteria:
+            raise ValueError(f"Unsupported criterion: {self.criterion}")
+
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y)
+        if X.ndim != 2 or X.shape[0] == 0 or X.shape[1] == 0:
+            raise ValueError("X must be a non-empty 2D array")
+        if y.ndim != 1 or len(y) != len(X):
+            raise ValueError("y must be 1D and have the same number of samples as X")
+        self.root = self._build_tree(X, y, depth=0)
+        self.n_features_in_ = X.shape[1]
+        return self
 
     def predict(self, X):
         """Predict a target for each row of ``X``.
 
-        TODO (students): implement this method. It should raise an error if
-        the model has not been fitted (``self.root is None``) and, for each
-        sample, walk from ``self.root``: go left when
+        Raises an error if the model has not been fitted. For each sample,
+        walk from ``self.root``: go left when
         ``x[feature_index] <= threshold`` else right, until a leaf is
         reached, then return that leaf's ``value``.
 
@@ -98,13 +114,27 @@ class BaseDecisionTree(ABC):
         Returns:
             array, shape (n_samples,): Predicted target for every sample.
         """
-        raise NotImplementedError("TODO: implement predict")
+        if self.root is None:
+            raise ValueError("The tree must be fitted before prediction")
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2 or X.shape[1] != self.n_features_in_:
+            raise ValueError("X must be 2D with the same number of features as in fit")
+
+        predictions = []
+        for sample in X:
+            node = self.root
+            while not node.is_leaf:
+                if sample[node.feature_index] <= node.threshold:
+                    node = node.left
+                else:
+                    node = node.right
+            predictions.append(node.value)
+        return np.asarray(predictions)
 
     def eval(self, X, y):
         """Score the model on ``(X, y)``.
 
-        TODO (students): implement this method. It should call
-        ``self.predict(X)`` and return ``self._score(y, y_pred)``.
+        Calls ``self.predict(X)`` and returns ``self._score(y, y_pred)``.
 
         Args:
             X (array-like, shape (n_samples, n_features)): Samples to evaluate.
@@ -114,13 +144,14 @@ class BaseDecisionTree(ABC):
             float: Metric value (accuracy for classification, R^2 for
             regression; higher is better).
         """
-        raise NotImplementedError("TODO: implement eval")
+        y_pred = self.predict(X)
+        return self._score(y, y_pred)
 
     @abstractmethod
     def _build_tree(self, X, y, depth):
         """Recursively grow the tree and return its root ``Node``.
 
-        TODO (students): create a leaf (``Node(value=self._leaf_value(y))``)
+        Create a leaf (``Node(value=self._leaf_value(y))``)
         when a stopping condition holds: ``depth`` reached ``max_depth``,
         fewer than ``min_samples_split`` samples, ``y`` is pure, or
         ``_best_split`` finds no useful split. Otherwise split the data on the
@@ -140,7 +171,7 @@ class BaseDecisionTree(ABC):
     def _impurity(self, y):
         """Compute the impurity of a set of targets.
 
-        TODO (students): implement the measure selected by ``self.criterion``
+        Calculate the measure selected by ``self.criterion``
         (e.g. Gini or entropy for classification, MSE or MAE for regression).
         Lower means more homogeneous; it is used to score candidate splits.
 
@@ -155,7 +186,7 @@ class BaseDecisionTree(ABC):
     def _best_split(self, X, y):
         """Find the split that most reduces impurity.
 
-        TODO (students): for each feature and candidate threshold (e.g.
+        For each feature and candidate threshold (e.g.
         midpoints between sorted unique values), partition ``y`` into left
         (``x <= threshold``) and right, compute the weighted impurity
         ``(n_l * imp_l + n_r * imp_r) / n`` and keep the split with the
@@ -175,7 +206,7 @@ class BaseDecisionTree(ABC):
     def _leaf_value(self, y):
         """Compute the prediction stored in a leaf.
 
-        TODO (students): return the majority class for classification or the
+        Return the majority class for classification or the
         mean of ``y`` for regression.
 
         Args:
@@ -189,7 +220,7 @@ class BaseDecisionTree(ABC):
     def _score(self, y_true, y_pred):
         """Compute the metric reported by ``eval``.
 
-        TODO (students): e.g. accuracy for classification, R^2 for regression.
+        Use accuracy for classification and R^2 for regression.
 
         Args:
             y_true (ndarray, shape (n_samples,)): Ground-truth targets.
