@@ -9,7 +9,7 @@ scikit-learn like API (`fit`, `predict`, `eval`).
 - `decision_tree/node.py`: tree node.
 
 Search for `TODO` / `NotImplementedError` to find what to implement.
-Run `pytest` to check the skeleton; extend the tests as you implement.
+Run `python -m unittest discover -s tests -v` to execute the automated tests.
 
 ## Suggested Implementation Roadmap
 
